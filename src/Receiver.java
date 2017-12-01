@@ -1,29 +1,25 @@
-import java.io.File;
-import java.io.FileOutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.zip.CRC32;
 
 public class Receiver {
 	static int pkt_size = 1000;
-	String message;
+	private String message;
+	String ip;
 
 	public String getMessage() {
 		return message;
 	}
 
-	// Receiver constructor
-	public Receiver(int senderPort, int receiverPort) {
+	public Receiver(String ip, int senderPort, int receiverPort) {
 		DatagramSocket senderSocket, receiverSocket;
 		System.out.println("Receiver: sender_port=" + senderPort + ", " + "receiver_port=" + receiverPort + ".");
+		this.ip = ip;
 
-		int prevSeqNum = -1; // previous sequence number received in-order
-		int nextSeqNum = 0; // next expected sequence number
-		boolean isTransferComplete = false; // (flag) if transfer is complete
+		int prevSeqNum = -1;
+		int nextSeqNum = 0;
+		boolean isTransferComplete = false;
 
 		// create sockets
 		try {
@@ -31,18 +27,10 @@ public class Receiver {
 			receiverSocket = new DatagramSocket();
 			System.out.println("Receiver: Listening");
 			try {
-				byte[] in_data = new byte[pkt_size]; // message data in packet
-				DatagramPacket in_pkt = new DatagramPacket(in_data, in_data.length); // incoming packet
-				InetAddress senderAddress = InetAddress.getByName("127.0.0.1");
+				byte[] in_data = new byte[pkt_size];
+				DatagramPacket in_pkt = new DatagramPacket(in_data, in_data.length);
+				InetAddress senderAddress = InetAddress.getByName(ip);
 
-				FileOutputStream fos = null;
-				// make directory
-				// path = ((path.substring(path.length()-1)).equals("/"))? path: path + "/"; //
-				// append slash if missing
-				// File filePath = new File(path);
-				// if (!filePath.exists()) filePath.mkdir();
-
-				// listen on sk2_dst_port
 				while (!isTransferComplete) {
 					// receive packet
 					senderSocket.receive(in_pkt);
@@ -157,11 +145,11 @@ public class Receiver {
 		return destArr;
 	}
 
-	// main function
+	// ex main function
 	public static void main(String[] args) {
 		// Ex: ports 4001 4002
 		// follow same sequence for the sender constructor
-		Receiver r = new Receiver(4001, 4002);
+		Receiver r = new Receiver("127.0.0.1", 4001, 4002);
 		// Get the message as such
 		System.out.println(r.getMessage());
 	}

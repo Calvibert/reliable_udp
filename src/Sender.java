@@ -1,12 +1,7 @@
-import java.io.File;
-import java.io.FileInputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Timer;
-import java.util.TimerTask;
 import java.util.Vector;
 import java.util.concurrent.Semaphore;
 import java.util.zip.CRC32;
@@ -24,11 +19,13 @@ public class Sender {
 	Timer timer;
 	Semaphore s;
 	boolean isTransferComplete;
+	String ip;
 
-	public Sender(int ackPort, int broadPort, String message) {
+	public Sender(String ip, int ackPort, int broadPort, String message) {
 		base = 0;
 		nextSeqNum = 0;
 		this.message = message;
+		this.ip = ip;
 		packetsList = new Vector<byte[]>(win_size);
 		isTransferComplete = false;
 		DatagramSocket ackSocket, broadSocket;
@@ -95,7 +92,7 @@ public class Sender {
 		// sending process (updates nextSeqNum)
 		public void run() {
 			try {
-				dst_addr = InetAddress.getByName("127.0.0.1");
+				dst_addr = InetAddress.getByName(ip);
 
 				try {
 					// while there are still packets yet to be received by receiver
@@ -234,6 +231,6 @@ public class Sender {
 	public static void main(String[] args) {
 		// sender port, receiver port, message
 		// ex: 4001 4002 "hello"
-		new Sender(4001, 4002, "Hello, receiver! how are you on this beautiful day?");
+		new Sender("127.0.0.1", 4001, 4002, "Hello, receiver! how are you on this beautiful day?");
 	}
 }
