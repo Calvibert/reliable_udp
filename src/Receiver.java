@@ -3,62 +3,59 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.zip.CRC32;
 
+
 public class Receiver {
-	static int pkt_size = 1000;
+	static int pktSize = 1000;
 	private String message;
 	String ip;
-
+	
 	public String getMessage() {
 		return message;
 	}
 
 	public Receiver(String ip, int senderPort, int receiverPort) {
 		DatagramSocket senderSocket, receiverSocket;
-		System.out.println("Receiver: sender_port=" + senderPort + ", " + "receiver_port=" + receiverPort + ".");
 		this.ip = ip;
-
-		int prevSeqNum = -1;
-		int nextSeqNum = 0;
-		boolean isTransferComplete = false;
+		
+		int prevSeqNum = -1; // previous sequence number received in-order
+		int nextSeqNum = 0; // next expected sequence number
+		boolean isTransferComplete = false; // (flag) if transfer is complete
 
 		// create sockets
 		try {
 			senderSocket = new DatagramSocket(senderPort);
 			receiverSocket = new DatagramSocket();
-			System.out.println("Receiver: Listening");
+			System.out.println("Receiver listening ...");
 			try {
-				byte[] in_data = new byte[pkt_size];
-				DatagramPacket in_pkt = new DatagramPacket(in_data, in_data.length);
+				byte[] inData = new byte[pktSize]; // message data in packet
+				DatagramPacket inPkt = new DatagramPacket(inData, inData.length); // incoming packet
 				InetAddress senderAddress = InetAddress.getByName(ip);
 
 				while (!isTransferComplete) {
 					// receive packet
-					senderSocket.receive(in_pkt);
-					String output = new String(in_pkt.getData());
+					senderSocket.receive(inPkt);
 
-					byte[] received_checksum = copyOfRange(in_data, 0, 8);
+					byte[] recChecksum = copyOfRange(inData, 0, 8);
 					CRC32 checksum = new CRC32();
-					checksum.update(copyOfRange(in_data, 8, in_pkt.getLength()));
-					byte[] calculated_checksum = ByteBuffer.allocate(8).putLong(checksum.getValue()).array();
+					checksum.update(copyOfRange(inData, 8, inPkt.getLength()));
+					byte[] calcChecksum = ByteBuffer.allocate(8).putLong(checksum.getValue()).array();
 
 					// if packet is not corrupted
-					if (Arrays.equals(received_checksum, calculated_checksum)) {
-						int seqNum = ByteBuffer.wrap(copyOfRange(in_data, 8, 12)).getInt();
-						System.out.println("Receiver: Received sequence number: " + seqNum);
+					if (Arrays.equals(recChecksum, calcChecksum)) {
+						int seqNum = ByteBuffer.wrap(copyOfRange(inData, 8, 12)).getInt();
+						System.out.println("Received sequence number: " + seqNum);
 
 						// if packet received in order
 						if (seqNum == nextSeqNum) {
 							// no data packet = 28 bytes
-							if (in_pkt.getLength() == 28) {
-								byte[] ackPkt = generatePacket(-2); // construct teardown packet (ack -2)
-								// send 20 acks in case last ack is not received by Sender (assures Sender
-								// teardown)
+							if (inPkt.getLength() == 28) {
+								byte[] ackPkt = generatePacket(-2);
 								for (int i = 0; i < 20; i++) {
 									receiverSocket
 											.send(new DatagramPacket(ackPkt, ackPkt.length, senderAddress, senderPort));
 								}
 								isTransferComplete = true;
-								System.out.println("Receiver: All packets received!");
+								System.out.println("All packets received!");
 								continue; // end listener
 							}
 							// send ack that a packet was received
@@ -66,27 +63,22 @@ public class Receiver {
 								byte[] ackPkt = generatePacket(seqNum);
 								receiverSocket
 										.send(new DatagramPacket(ackPkt, ackPkt.length, senderAddress, receiverPort));
-								System.out.println("Receiver: Sent Ack " + seqNum);
+								System.out.println("Sent Ack " + seqNum);
 							}
 
 							// if first packet of transfer
 							if (seqNum == 0 && prevSeqNum == -1) {
 								// Goes here the first time
-								int messageLength = ByteBuffer.wrap(copyOfRange(in_data, 12, 16)).getInt(); // 0-8:checksum,
-																											// 8-12:seqnum
-								message = new String(copyOfRange(in_data, 16, 16 + messageLength)); // decode file name
-								this.message = message;
-								System.out.println(
-										"Receiver: fileName length: " + messageLength + ", message:" + message);
+								int messageLength = ByteBuffer.wrap(copyOfRange(inData, 12, 16)).getInt();
+								message = new String(copyOfRange(inData, 16, 16 + messageLength)); // copy the message
+								//System.out.println("Receiver: fileName length: " + messageLength + ", message:" + message);
 								isTransferComplete = true;
-								// Close it right away
-								System.out.println("Receiver: All packets received!");
-								continue; // end listener
+								System.out.println("All packets received!");
+								continue;
 							}
 
-							// else if not first packet write to FileOutputStream
 							else {
-								String newPkt = new String(in_pkt.getData());
+								String newPkt = new String(inPkt.getData());
 								message += newPkt;
 							}
 
@@ -98,16 +90,15 @@ public class Receiver {
 						else {
 							byte[] ackPkt = generatePacket(prevSeqNum);
 							receiverSocket.send(new DatagramPacket(ackPkt, ackPkt.length, senderAddress, receiverPort));
-							System.out.println("Receiver: Sent duplicate Ack " + prevSeqNum);
+							System.out.println("Sent duplicate Ack " + prevSeqNum);
 						}
 					}
 
-					// else packet is corrupted
+					// Corrupted packet
 					else {
-						System.out.println("Receiver: Corrupt packet dropped");
 						byte[] ackPkt = generatePacket(prevSeqNum);
 						receiverSocket.send(new DatagramPacket(ackPkt, ackPkt.length, senderAddress, receiverPort));
-						System.out.println("Receiver: Sent duplicate Ack " + prevSeqNum);
+						System.out.println("Sent duplicate Ack " + prevSeqNum);
 					}
 				}
 			} catch (Exception e) {
@@ -116,35 +107,36 @@ public class Receiver {
 			} finally {
 				senderSocket.close();
 				receiverSocket.close();
-				System.out.println("Receiver: SenderSocket closed!");
-				System.out.println("Receiver: ReceiverSocket closed!");
+				System.out.println("SenderSocket closed!");
+				System.out.println("ReceiverSocket closed!");
 			}
-		} catch (SocketException e1) {
-			e1.printStackTrace();
+		} catch (SocketException e) {
+			e.printStackTrace();
 		}
-	}// END constructor
+	}
 
-	// generate Ack packet
+	// Send an acknowledgement packet
 	public byte[] generatePacket(int ackNum) {
 		byte[] ackNumBytes = ByteBuffer.allocate(4).putInt(ackNum).array();
-		// calculate checksum
+		
 		CRC32 checksum = new CRC32();
 		checksum.update(ackNumBytes);
-		// construct Ack packet
+		
 		ByteBuffer pktBuf = ByteBuffer.allocate(12);
 		pktBuf.put(ByteBuffer.allocate(8).putLong(checksum.getValue()).array());
 		pktBuf.put(ackNumBytes);
 		return pktBuf.array();
 	}
 
-	// same as Arrays.copyOfRange in 1.6
+	// Returns the specified part of the byte array
 	public byte[] copyOfRange(byte[] srcArr, int start, int end) {
 		int length = (end > srcArr.length) ? srcArr.length - start : end - start;
 		byte[] destArr = new byte[length];
 		System.arraycopy(srcArr, start, destArr, 0, length);
 		return destArr;
 	}
-
+	
+	
 	// ex main function
 	public static void main(String[] args) {
 		// Ex: ports 4001 4002

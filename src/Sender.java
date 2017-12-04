@@ -6,10 +6,11 @@ import java.util.Vector;
 import java.util.concurrent.Semaphore;
 import java.util.zip.CRC32;
 
+
 // The following implementation uses the Go-Back-N protocol
 public class Sender {
-	static int data_size = 988; // (checksum:8, seqNum:4, data<=988) Bytes : 1000 Bytes total
-	static int win_size = 10;
+	static int dataSize = 988;
+	static int winSize = 10;
 	static int timeoutVal = 300; // 300ms until timeout
 
 	int base;
@@ -26,19 +27,15 @@ public class Sender {
 		nextSeqNum = 0;
 		this.message = message;
 		this.ip = ip;
-		packetsList = new Vector<byte[]>(win_size);
+		packetsList = new Vector<byte[]>(winSize);
 		isTransferComplete = false;
 		DatagramSocket ackSocket, broadSocket;
 		s = new Semaphore(1);
-		System.out.println(
-				"Sender: Aknowledgement port=" + ackPort + ", Receiver port=" + broadPort + ", message=" + message);
 
 		try {
-			// create sockets
-			ackSocket = new DatagramSocket(); // outgoing channel
-			broadSocket = new DatagramSocket(broadPort); // incoming channel
+			ackSocket = new DatagramSocket();
+			broadSocket = new DatagramSocket(broadPort);
 
-			// create threads to process data
 			AcknowledgeThread ackThread = new AcknowledgeThread(broadSocket);
 			BroadcastThread broadThread = new BroadcastThread(ackSocket, ackPort, broadPort);
 			ackThread.start();
@@ -48,9 +45,8 @@ public class Sender {
 			e.printStackTrace();
 			System.exit(-1);
 		}
-	}// END Sender constructor
+	}
 
-	// same as Arrays.copyOfRange in 1.6
 	public byte[] copyOfRange(byte[] srcArr, int start, int end) {
 		int length = (end > srcArr.length) ? srcArr.length - start : end - start;
 		byte[] destArr = new byte[length];
@@ -60,20 +56,18 @@ public class Sender {
 
 
 	public class BroadcastThread extends Thread {
-		private DatagramSocket sk_out;
-		private int dst_port;
-		private InetAddress dst_addr;
-		private int recv_port;
+		private DatagramSocket skOut;
+		private int destPort;
+		private InetAddress destAddr;
 
 		public BroadcastThread(DatagramSocket sk_out, int dst_port, int recv_port) {
-			this.sk_out = sk_out;
-			this.dst_port = dst_port;
-			this.recv_port = recv_port;
+			this.skOut = sk_out;
+			this.destPort = dst_port;
 		}
 
 		// constructs the packet prepended with header information
 		public byte[] generatePacket(int seqNum, byte[] dataBytes) {
-			byte[] seqNumBytes = ByteBuffer.allocate(4).putInt(seqNum).array(); // Seq num (4 bytes)
+			byte[] seqNumBytes = ByteBuffer.allocate(4).putInt(seqNum).array();
 
 			// generate checksum
 			CRC32 checksum = new CRC32();
@@ -89,25 +83,24 @@ public class Sender {
 			return pktBuf.array();
 		}
 
-		// sending process (updates nextSeqNum)
 		public void run() {
 			try {
-				dst_addr = InetAddress.getByName(ip);
+				destAddr = InetAddress.getByName(ip);
 
 				try {
 					// while there are still packets yet to be received by receiver
 					while (!isTransferComplete) {
 						// send packets if window is not yet full
-						if (nextSeqNum < base + win_size) {
+						if (nextSeqNum < base + winSize) {
 
 							s.acquire(); /***** enter CS *****/
 
-							byte[] out_data = new byte[10];
+							byte[] outData = new byte[10];
 							boolean isFinalSeqNum = false;
 
 							// if packet is in packetsList, retrieve from list
 							if (nextSeqNum < packetsList.size()) {
-								out_data = packetsList.get(nextSeqNum);
+								outData = packetsList.get(nextSeqNum);
 							}
 							// else construct packet and add to list
 							else {
@@ -116,23 +109,21 @@ public class Sender {
 									byte[] messageBytes = message.getBytes();
 									byte[] messageLengthBytes = ByteBuffer.allocate(4).putInt(message.length()).array();
 									
-									byte[] dataBuffer = new byte[data_size];
 									ByteBuffer BB = ByteBuffer.allocate(4 + messageBytes.length);
 									BB.put(messageLengthBytes);
 									BB.put(messageBytes);
-									out_data = generatePacket(nextSeqNum, BB.array());
+									outData = generatePacket(nextSeqNum, BB.array());
 								}
 								// else if subsequent packets
 								else {
 									byte[] messageBytes = message.getBytes();
-									byte[] messageLengthBytes = ByteBuffer.allocate(4).putInt(message.length()).array();
-									out_data = generatePacket(nextSeqNum, messageBytes);
+									outData = generatePacket(nextSeqNum, messageBytes);
 								}
 							}
 
 							// send the packet
-							sk_out.send(new DatagramPacket(out_data, out_data.length, dst_addr, dst_port));
-							System.out.println("Sender: Sent seqNum " + nextSeqNum);
+							skOut.send(new DatagramPacket(outData, outData.length, destAddr, destPort));
+							System.out.println("Sent seqNum " + nextSeqNum);
 
 							// update nextSeqNum if currently not at FinalSeqNum
 							if (!isFinalSeqNum)
@@ -144,9 +135,8 @@ public class Sender {
 				} catch (Exception e) {
 					e.printStackTrace();
 				} finally {
-					sk_out.close(); // close outgoing socket
-					// fis.close(); // close FileInputStream
-					System.out.println("Sender: sk_out closed!");
+					skOut.close();
+					System.out.println("skOut closed!");
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -157,10 +147,10 @@ public class Sender {
 
 
 	public class AcknowledgeThread extends Thread {
-		private DatagramSocket sk_in;
+		private DatagramSocket skIn;
 
 		public AcknowledgeThread(DatagramSocket sk_in) {
-			this.sk_in = sk_in;
+			this.skIn = sk_in;
 		}
 
 		// returns -1 if corrupted, else return Ack number
@@ -186,9 +176,9 @@ public class Sender {
 					// while there are still packets yet to be received by receiver
 					while (!isTransferComplete) {
 
-						sk_in.receive(in_pkt);
+						skIn.receive(in_pkt);
 						int ackNum = decodePacket(in_data);
-						System.out.println("Sender: Received Ack " + ackNum);
+						System.out.println("Received Ack " + ackNum);
 
 						// if ack is not corrupted
 						if (ackNum != -1) {
@@ -218,8 +208,8 @@ public class Sender {
 				} catch (Exception e) {
 					e.printStackTrace();
 				} finally {
-					sk_in.close();
-					System.out.println("Sender: sk_in closed!");
+					skIn.close();
+					System.out.println("sk_in closed!");
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -227,10 +217,11 @@ public class Sender {
 			}
 		}
 	}
-
+	
 	public static void main(String[] args) {
 		// sender port, receiver port, message
 		// ex: 4001 4002 "hello"
-		new Sender("127.0.0.1", 4001, 4002, "Hello, receiver! how are you on this beautiful day?");
+		String s = "";
+		new Sender("127.0.0.1", 4001, 4002, s);
 	}
 }
